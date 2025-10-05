@@ -14,6 +14,8 @@ const Register = () => {
     gradeLevels: [],
     bio: ''
   });
+  const [includeOtherSubject, setIncludeOtherSubject] = useState(false);
+  const [otherSubject, setOtherSubject] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
@@ -75,12 +77,19 @@ const Register = () => {
       return;
     }
 
+    // Attach custom subject if provided (student only)
+    const subjectsToSend = [...formData.subjects];
+    if (formData.role === 'student' && includeOtherSubject && otherSubject.trim()) {
+      const custom = otherSubject.trim();
+      if (!subjectsToSend.includes(custom)) subjectsToSend.push(custom);
+    }
+
     const result = await register({
       name: formData.name,
       email: formData.email,
       role: formData.role,
       password: formData.password,
-      subjects: formData.subjects,
+      subjects: subjectsToSend,
       gradeLevels: formData.gradeLevels,
       bio: formData.bio
     });
@@ -278,6 +287,28 @@ const Register = () => {
                         <span className="ml-2 text-sm text-gray-700">{subject}</span>
                       </label>
                     ))}
+                    {formData.role === 'student' && (
+                      <div className="flex items-center col-span-2 md:col-span-3">
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={includeOtherSubject}
+                            onChange={(e) => setIncludeOtherSubject(e.target.checked)}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">Other</span>
+                        </label>
+                        {includeOtherSubject && (
+                          <input
+                            type="text"
+                            className="input-field ml-4 flex-1"
+                            placeholder="Enter another subject"
+                            value={otherSubject}
+                            onChange={(e) => setOtherSubject(e.target.value)}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
