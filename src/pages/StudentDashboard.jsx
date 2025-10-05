@@ -72,7 +72,11 @@ const StudentDashboard = () => {
   const [paymentData, setPaymentData] = useState({
     amount: 0,
     sessionCount: 1,
-    paymentMethod: 'credit_card'
+    paymentMethod: 'credit_card',
+    method: 'credit_card',
+    notes: '',
+    card: { holderName: '', number: '', expiryMonth: '', expiryYear: '', cvv: '' },
+    proofImage: ''
   });
   const [pendingPayments, setPendingPayments] = useState([]);
   const [paymentHistory, setPaymentHistory] = useState([]);
@@ -232,20 +236,48 @@ const StudentDashboard = () => {
   const handlePayment = async () => {
     try {
       if (!selectedEnrollment) return;
-      
-      const response = await apiClient.post('/payment/create', {
+
+      const payload = {
         courseId: selectedEnrollment.course._id,
         paymentMethod: paymentData.method,
         amount: selectedEnrollment.course.pricing.pricePerSession,
         notes: paymentData.notes
-      });
-      
+      };
+
+      if (['credit_card','debit_card'].includes(paymentData.method)) {
+        const numberOk = /^\d{16}$/.test(paymentData.card.number || '');
+        const cvvOk = /^\d{3,4}$/.test(paymentData.card.cvv || '');
+        const monthOk = Number(paymentData.card.expiryMonth) >= 1 && Number(paymentData.card.expiryMonth) <= 12;
+        const yearOk = Number(paymentData.card.expiryYear) >= new Date().getFullYear();
+        if (!paymentData.card.holderName || !numberOk || !cvvOk || !monthOk || !yearOk) {
+          alert('Please enter valid card details. Card number must be 16 digits.');
+          return;
+        }
+        payload.card = {
+          holderName: paymentData.card.holderName,
+          number: paymentData.card.number,
+          expiryMonth: Number(paymentData.card.expiryMonth),
+          expiryYear: Number(paymentData.card.expiryYear),
+          cvv: paymentData.card.cvv
+        };
+      }
+
+      if (['bank_transfer','cash'].includes(paymentData.method)) {
+        if (!paymentData.proofImage) {
+          alert('Please upload payment proof image.');
+          return;
+        }
+        payload.proofImage = paymentData.proofImage;
+      }
+
+      const response = await apiClient.post('/payment/create', payload);
+
       if (response.data.success) {
         setShowPaymentModal(false);
         fetchPayments();
         fetchEnrollments();
         fetchStats();
-        alert('Payment created successfully!');
+        alert(response.data.payment?.paymentStatus === 'completed' ? 'Payment successful!' : 'Payment submitted and pending verification.');
       }
     } catch (error) {
       console.error('Error processing payment', error);
@@ -280,7 +312,9 @@ const StudentDashboard = () => {
     setSelectedEnrollment(item);
     setPaymentData({
       method: 'credit_card',
-      notes: ''
+      notes: '',
+      card: { holderName: '', number: '', expiryMonth: '', expiryYear: '', cvv: '' },
+      proofImage: ''
     });
     setShowPaymentModal(true);
   };
@@ -1127,6 +1161,95 @@ const StudentDashboard = () => {
                       <option value="cash">Cash</option>
                     </select>
                   </div>
+
+                  {/* Conditional fields: card details */}
+                  {['credit_card','debit_card'].includes(paymentData.method) && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Name on Card</label>
+                        <input
+                          type="text"
+                          className="input-field mt-1"
+                          value={paymentData.card.holderName}
+                          onChange={(e) => setPaymentData(prev => ({ ...prev, card: { ...prev.card, holderName: e.target.value } }))}
+                          placeholder="John Doe"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Card Number</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={16}
+                          className="input-field mt-1"
+                          value={paymentData.card.number}
+                          onChange={(e) => setPaymentData(prev => ({ ...prev, card: { ...prev.card, number: e.target.value.replace(/\D/g,'') } }))}
+                          placeholder="1234123412341234"
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Expiry Month</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="12"
+                            className="input-field mt-1"
+                            value={paymentData.card.expiryMonth}
+                            onChange={(e) => setPaymentData(prev => ({ ...prev, card: { ...prev.card, expiryMonth: e.target.value } }))}
+                            placeholder="MM"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Expiry Year</label>
+                          <input
+                            type="number"
+                            min={new Date().getFullYear()}
+                            className="input-field mt-1"
+                            value={paymentData.card.expiryYear}
+                            onChange={(e) => setPaymentData(prev => ({ ...prev, card: { ...prev.card, expiryYear: e.target.value } }))}
+                            placeholder="YYYY"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">CVV</label>
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={4}
+                            className="input-field mt-1"
+                            value={paymentData.card.cvv}
+                            onChange={(e) => setPaymentData(prev => ({ ...prev, card: { ...prev.card, cvv: e.target.value.replace(/\D/g,'') } }))}
+                            placeholder="123"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Conditional fields: proof upload */}
+                  {['bank_transfer','cash'].includes(paymentData.method) && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Upload Payment Proof (image)</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="mt-1"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            setPaymentData(prev => ({ ...prev, proofImage: String(ev.target?.result || '') }));
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                      {paymentData.proofImage && (
+                        <img src={paymentData.proofImage} alt="proof" className="mt-2 h-24 object-contain border rounded" />
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Notes (Optional)</label>

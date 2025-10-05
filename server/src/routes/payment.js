@@ -22,7 +22,16 @@ const createPaymentSchema = Joi.object({
   }).required(),
   paymentMethod: Joi.string().valid('credit_card', 'debit_card', 'paypal', 'bank_transfer', 'cash').required(),
   amount: Joi.number().min(0).required(),
-  notes: Joi.string().allow('').optional()
+  notes: Joi.string().allow('').optional(),
+  // Optional card and proof payloads
+  card: Joi.object({
+    holderName: Joi.string().min(2).required(),
+    number: Joi.string().pattern(/^\d{16}$/).required(),
+    expiryMonth: Joi.number().integer().min(1).max(12).required(),
+    expiryYear: Joi.number().integer().min(new Date().getFullYear()).max(new Date().getFullYear() + 15).required(),
+    cvv: Joi.string().pattern(/^\d{3,4}$/).required()
+  }).when('paymentMethod', { is: Joi.valid('credit_card','debit_card'), then: Joi.required(), otherwise: Joi.forbidden() }),
+  proofImage: Joi.string().dataUri().when('paymentMethod', { is: Joi.valid('bank_transfer','cash'), then: Joi.required(), otherwise: Joi.forbidden() })
 });
 
 const updatePaymentSchema = Joi.object({
@@ -64,8 +73,8 @@ router.post('/create', authenticateToken, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Payment already exists for this course' });
     }
 
-    // Create payment record
-    const payment = await Payment.create({
+    // Build base payment record
+    const basePayment = {
       student: studentId,
       teacher: course.teacher._id,
       course: data.courseId,
@@ -74,7 +83,30 @@ router.post('/create', authenticateToken, async (req, res, next) => {
       paymentStatus: 'pending',
       trialExpired: enrollment.status === 'trial' && new Date() > new Date(enrollment.trialEndsAt),
       notes: data.notes || ''
-    });
+    };
+
+    // Handle method-specific data
+    if (['credit_card','debit_card'].includes(data.paymentMethod)) {
+      // Simulate processing; do not store full PAN or CVV
+      const last4 = data.card.number.slice(-4);
+      const brand = data.paymentMethod === 'credit_card' ? 'card' : 'debit';
+      basePayment.card = {
+        holderName: data.card.holderName,
+        last4,
+        brand,
+        expiryMonth: data.card.expiryMonth,
+        expiryYear: data.card.expiryYear
+      };
+      basePayment.transactionId = `SIM-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
+      basePayment.paymentStatus = 'completed';
+    } else if (['bank_transfer','cash'].includes(data.paymentMethod)) {
+      basePayment.proofImage = data.proofImage; // data URI (base64)
+      basePayment.proofUploadedAt = new Date();
+      basePayment.paymentStatus = 'pending';
+    }
+
+    // Create payment record
+    const payment = await Payment.create(basePayment);
 
     // Populate the payment with course and user details
     await payment.populate([

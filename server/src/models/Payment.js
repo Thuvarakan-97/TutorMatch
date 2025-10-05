@@ -30,6 +30,17 @@ const paymentSchema = new mongoose.Schema({
     enum: ['credit_card', 'debit_card', 'paypal', 'bank_transfer', 'cash'],
     required: true
   },
+  // For simulated card payments (we do NOT store full card numbers or CVV)
+  card: {
+    holderName: { type: String },
+    last4: { type: String },
+    brand: { type: String },
+    expiryMonth: { type: Number, min: 1, max: 12 },
+    expiryYear: { type: Number }
+  },
+  // For offline methods (bank transfer / cash): base64 image proof
+  proofImage: { type: String },
+  proofUploadedAt: { type: Date },
   paymentStatus: {
     type: String,
     enum: ['pending', 'completed', 'failed', 'refunded', 'cancelled'],
