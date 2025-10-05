@@ -16,7 +16,9 @@ import {
   Phone,
   CheckCircle,
   Clock,
-  DollarSign
+  DollarSign,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import apiClient from '../utils/api.js';
 import Chat from '../components/Chat.jsx';
