@@ -17,7 +17,10 @@ const CourseSchema = new mongoose.Schema(
       pricePerSession: { type: Number, required: true },
       totalSessions: { type: Number, default: 1 },
       freeTrialDays: { type: Number, default: 3 },
-      discountPercentage: { type: Number, default: 0 }
+      discountPercentage: { type: Number, default: 0 },
+      hasTrial: { type: Boolean, default: true },
+      upfrontPayment: { type: Boolean, default: false },
+      currency: { type: String, default: 'USD' }
     },
     schedule: {
       availability: [{ day: String, start: String, end: String }],

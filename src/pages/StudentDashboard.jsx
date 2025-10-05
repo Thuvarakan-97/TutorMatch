@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import {
   BookOpen,
   Calendar,
@@ -30,6 +29,8 @@ import {
   Copy
 } from 'lucide-react';
 import apiClient from '../utils/api.js';
+import Chat from '../components/Chat.jsx';
+import { useAuth } from '../contexts/AuthContext';
 
 const StudentDashboard = () => {
   const { user } = useAuth();
@@ -66,6 +67,8 @@ const StudentDashboard = () => {
     sessionCount: 1,
     paymentMethod: 'credit_card'
   });
+  const [pendingPayments, setPendingPayments] = useState([]);
+  const [paymentHistory, setPaymentHistory] = useState([]);
 
   const statsCards = [
     { name: 'Active Sessions', value: stats.upcomingSessions, icon: Calendar, color: 'text-blue-600' },
@@ -91,6 +94,8 @@ const StudentDashboard = () => {
     fetchRequests();
     fetchEnrollments();
     fetchUpcomingSessions();
+    fetchPayments();
+    fetchPendingPayments();
   }, []);
 
   useEffect(() => {
@@ -166,6 +171,38 @@ const StudentDashboard = () => {
     }
   };
 
+  const fetchPayments = async () => {
+    try {
+      // Fetch courses needing payment
+      const coursesResponse = await apiClient.get('/payment/courses-needing-payment');
+      if (coursesResponse.data.success) {
+        setPendingPayments(coursesResponse.data.coursesNeedingPayment || []);
+      }
+
+      // Fetch payment history
+      const historyResponse = await apiClient.get('/payment/my-payments');
+      if (historyResponse.data.success) {
+        setPaymentHistory(historyResponse.data.payments || []);
+      }
+    } catch (error) {
+      console.error('Error fetching payments', error);
+      // Set empty arrays to prevent white screen
+      setPendingPayments([]);
+      setPaymentHistory([]);
+    }
+  };
+
+  const fetchPendingPayments = async () => {
+    try {
+      const response = await apiClient.get('/payment/courses-needing-payment');
+      if (response.data.success) {
+        setPendingPayments(response.data.coursesNeedingPayment || []);
+      }
+    } catch (error) {
+      console.error('Error fetching pending payments', error);
+    }
+  };
+
   const requestCourse = async (courseId, message) => {
     try {
       const response = await apiClient.post(`/student/courses/${courseId}/request`, {
@@ -189,17 +226,23 @@ const StudentDashboard = () => {
     try {
       if (!selectedEnrollment) return;
       
-      const response = await apiClient.post(`/student/courses/${selectedEnrollment.course._id}/payment`, paymentData);
+      const response = await apiClient.post('/payment/create', {
+        courseId: selectedEnrollment.course._id,
+        paymentMethod: paymentData.method,
+        amount: selectedEnrollment.course.pricing.pricePerSession,
+        notes: paymentData.notes
+      });
       
       if (response.data.success) {
         setShowPaymentModal(false);
+        fetchPayments();
         fetchEnrollments();
         fetchStats();
-        alert('Payment processed successfully!');
+        alert('Payment created successfully!');
       }
     } catch (error) {
       console.error('Error processing payment', error);
-      alert('Payment failed. Please try again.');
+      alert(error.response?.data?.message || 'Payment failed. Please try again.');
     }
   };
 
@@ -226,12 +269,11 @@ const StudentDashboard = () => {
     setShowCourseModal(true);
   };
 
-  const openPaymentModal = (enrollment) => {
-    setSelectedEnrollment(enrollment);
+  const openPaymentModal = (item) => {
+    setSelectedEnrollment(item);
     setPaymentData({
-      amount: enrollment.course.pricing.pricePerSession,
-      sessionCount: 1,
-      paymentMethod: 'credit_card'
+      method: 'credit_card',
+      notes: ''
     });
     setShowPaymentModal(true);
   };
@@ -343,7 +385,9 @@ const StudentDashboard = () => {
               { id: 'courses', name: 'Browse Courses', icon: BookOpen },
               { id: 'enrollments', name: 'My Courses', icon: UserCheck },
               { id: 'requests', name: 'Requests', icon: MessageSquare },
-              { id: 'sessions', name: 'Upcoming Sessions', icon: Calendar }
+              { id: 'sessions', name: 'Upcoming Sessions', icon: Calendar },
+              { id: 'payments', name: 'Payments', icon: CreditCard },
+              { id: 'chat', name: 'Messages', icon: MessageSquare }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -799,6 +843,160 @@ const StudentDashboard = () => {
           </div>
         )}
 
+        {/* Payments Tab Content */}
+        {activeTab === 'payments' && (
+          <div className="space-y-6">
+            {/* Pending Payments */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Pending Payments</h2>
+                <p className="text-sm text-gray-500">Courses requiring payment to continue</p>
+              </div>
+              
+              <div className="divide-y divide-gray-200">
+                {pendingPayments.length > 0 ? (
+                  pendingPayments.map((item) => {
+                    const trialEndsAt = new Date(item.enrollment.trialEndsAt);
+                    
+                    return (
+                      <div key={item.course._id} className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h3 className="text-lg font-medium text-gray-900">{item.course.title}</h3>
+                            <p className="text-sm text-gray-500">by {item.teacher.name}</p>
+                            <p className="text-sm text-gray-600 mt-2">
+                              {item.trialExpired ? (
+                                <span className="text-red-600 font-medium">Trial period ended</span>
+                              ) : (
+                                <span className="text-orange-600">
+                                  Trial ends: {trialEndsAt.toLocaleDateString()}
+                                </span>
+                              )}
+                            </p>
+                            {item.course.pricing.upfrontPayment && (
+                              <p className="text-sm text-blue-600 mt-1">
+                                <AlertCircle className="h-4 w-4 inline mr-1" />
+                                Upfront payment required
+                              </p>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center space-x-4">
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-green-600">
+                                ${item.course.pricing.pricePerSession}
+                              </p>
+                              <p className="text-sm text-gray-500">per session</p>
+                            </div>
+                            
+                            <button
+                              onClick={() => openPaymentModal(item)}
+                              className="btn-primary"
+                            >
+                              <CreditCard className="h-4 w-4 mr-2" />
+                              Make Payment
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-6 text-center text-gray-500">
+                    <CreditCard className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>No pending payments</p>
+                    <p className="text-sm">All your enrolled courses are up to date</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Payment History */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Payment History</h2>
+                <p className="text-sm text-gray-500">Your completed payments</p>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Course
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Teacher
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Amount
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Sessions
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {paymentHistory.length > 0 ? (
+                      paymentHistory.map((payment) => (
+                        <tr key={payment._id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {payment.course?.title || 'Unknown Course'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {payment.teacher?.name || 'Unknown Teacher'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            ${payment.amount}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {payment.course?.pricing?.totalSessions || 1}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(payment.paymentDate).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              payment.paymentStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                              payment.paymentStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              payment.paymentStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                              payment.paymentStatus === 'refunded' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {payment.paymentStatus}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                          <CreditCard className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                          <p>No payment history found</p>
+                          <p className="text-sm">Your payments will appear here</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chat Tab */}
+        {activeTab === 'chat' && (
+          <div className="h-[calc(100vh-200px)]">
+            <Chat currentUser={user} />
+          </div>
+        )}
+
         {/* Payment Modal */}
         {showPaymentModal && selectedEnrollment && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -807,38 +1005,46 @@ const StudentDashboard = () => {
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Payment for {selectedEnrollment.course.title}</h3>
                 <form onSubmit={(e) => { e.preventDefault(); handlePayment(); }} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Sessions to Pay</label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="input-field mt-1"
-                      value={paymentData.sessionCount}
-                      onChange={(e) => setPaymentData(prev => ({
-                        ...prev,
-                        sessionCount: parseInt(e.target.value),
-                        amount: selectedEnrollment.course.pricing.pricePerSession * parseInt(e.target.value)
-                      }))}
-                    />
+                    <label className="block text-sm font-medium text-gray-700">Course Details</label>
+                    <div className="text-sm text-gray-600 mt-1">
+                      <p>Teacher: {selectedEnrollment.teacher.name}</p>
+                      <p>Subject: {selectedEnrollment.course.subject}</p>
+                      <p>Grade Level: {selectedEnrollment.course.gradeLevel}</p>
+                    </div>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Total Amount</label>
+                    <label className="block text-sm font-medium text-gray-700">Amount</label>
                     <div className="text-lg font-bold text-primary-600">
-                      ${paymentData.amount}
+                      ${selectedEnrollment.course.pricing.pricePerSession}
                     </div>
+                    <p className="text-sm text-gray-500">per session</p>
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Payment Method</label>
                     <select
                       className="input-field mt-1"
-                      value={paymentData.paymentMethod}
-                      onChange={(e) => setPaymentData(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                      value={paymentData.method}
+                      onChange={(e) => setPaymentData(prev => ({ ...prev, method: e.target.value }))}
                     >
                       <option value="credit_card">Credit Card</option>
                       <option value="debit_card">Debit Card</option>
+                      <option value="paypal">PayPal</option>
                       <option value="bank_transfer">Bank Transfer</option>
+                      <option value="cash">Cash</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Notes (Optional)</label>
+                    <textarea
+                      className="input-field mt-1"
+                      rows="3"
+                      value={paymentData.notes}
+                      onChange={(e) => setPaymentData(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Any additional notes..."
+                    />
                   </div>
                   
                   <div className="flex justify-end space-x-3 pt-4">
@@ -851,7 +1057,7 @@ const StudentDashboard = () => {
                     </button>
                     <button type="submit" className="btn-primary">
                       <CreditCard className="h-4 w-4 mr-2" />
-                      Pay Now
+                      Create Payment
                     </button>
                   </div>
                 </form>

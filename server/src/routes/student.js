@@ -423,5 +423,45 @@ router.put("/enrollments/:id/cancel", async (req, res, next) => {
   }
 });
 
+// Get student's payments and payment history
+router.get("/payments", async (req, res, next) => {
+  try {
+    const studentId = req.user._id;
+    
+    // Get payment history
+    const paymentHistory = await Payment.find({ student: studentId })
+      .populate('course', 'title')
+      .populate('teacher', 'name')
+      .sort({ createdAt: -1 });
+
+    // Get pending payments (enrollments that need payment)
+    const enrollments = await Enrollment.find({ 
+      student: studentId,
+      status: { $in: ['trial'] }
+    })
+      .populate('course', 'title pricing')
+      .populate('teacher', 'name')
+      .sort({ createdAt: -1 });
+
+    // Filter enrollments that need payment
+    const pendingPayments = enrollments.filter(enrollment => {
+      const now = new Date();
+      const trialEndsAt = new Date(enrollment.trialEndsAt);
+      const isTrialEnded = trialEndsAt <= now;
+      
+      // Check if needs payment
+      return isTrialEnded || enrollment.status === 'pending_payment';
+    });
+
+    res.json({
+      success: true,
+      pendingPayments,
+      history: paymentHistory
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
 

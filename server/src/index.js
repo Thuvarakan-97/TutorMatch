@@ -11,6 +11,9 @@ import adminRouter from "./routes/admin.js";
 import authRouter from "./routes/auth.js";
 import teacherRouter from "./routes/teacher.js";
 import studentRouter from "./routes/student.js";
+import contactRouter from "./routes/contact.js";
+import chatRouter from "./routes/chat.js";
+import paymentRouter from "./routes/payment.js";
 
 dotenv.config();
 
@@ -30,6 +33,9 @@ app.use("/api/admin", adminRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/teacher", teacherRouter);
 app.use("/api/student", studentRouter);
+app.use("/api/contact", contactRouter);
+app.use("/api/chat", chatRouter);
+app.use("/api/payment", paymentRouter);
 
 // 404 and Error handlers
 app.use(notFoundHandler);

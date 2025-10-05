@@ -522,4 +522,84 @@ router.delete("/sessions/:sessionId", async (req, res, next) => {
   }
 });
 
+// Get teacher's payments and earnings
+router.get("/payments", async (req, res, next) => {
+  try {
+    const teacherId = req.user._id;
+    
+    // Get all payments made to this teacher
+    const payments = await Payment.find({ teacher: teacherId })
+      .populate('student', 'name email')
+      .populate('course', 'title')
+      .sort({ createdAt: -1 });
+
+    // Calculate earnings statistics
+    const totalEarnings = await Payment.aggregate([
+      { $match: { teacher: teacherId, status: "completed" } },
+      { $group: { _id: null, total: { $sum: "$amount" } } }
+    ]);
+
+    const pendingPayments = await Payment.countDocuments({ 
+      teacher: teacherId, 
+      status: "pending" 
+    });
+
+    const completedPayments = await Payment.countDocuments({ 
+      teacher: teacherId, 
+      status: "completed" 
+    });
+
+    // This month earnings
+    const thisMonth = new Date();
+    thisMonth.setDate(1);
+    thisMonth.setHours(0, 0, 0, 0);
+    
+    const thisMonthEarnings = await Payment.aggregate([
+      { 
+        $match: { 
+          teacher: teacherId, 
+          status: "completed",
+          createdAt: { $gte: thisMonth }
+        } 
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } }
+    ]);
+
+    // Last month earnings
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    lastMonth.setDate(1);
+    lastMonth.setHours(0, 0, 0, 0);
+    
+    const lastMonthEnd = new Date();
+    lastMonthEnd.setDate(1);
+    lastMonthEnd.setHours(0, 0, 0, 0);
+    
+    const lastMonthEarnings = await Payment.aggregate([
+      { 
+        $match: { 
+          teacher: teacherId, 
+          status: "completed",
+          createdAt: { $gte: lastMonth, $lt: lastMonthEnd }
+        } 
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } }
+    ]);
+
+    res.json({
+      success: true,
+      payments,
+      earnings: {
+        totalEarnings: totalEarnings[0]?.total || 0,
+        pendingPayments,
+        completedPayments,
+        thisMonth: thisMonthEarnings[0]?.total || 0,
+        lastMonth: lastMonthEarnings[0]?.total || 0
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

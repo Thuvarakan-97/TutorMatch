@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { 
   BookOpen, 
   Plus, 
@@ -27,6 +26,8 @@ import {
   Calendar as CalendarIcon
 } from 'lucide-react';
 import apiClient from '../utils/api.js';
+import Chat from '../components/Chat.jsx';
+import { useAuth } from '../contexts/AuthContext';
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
@@ -40,7 +41,6 @@ const TeacherDashboard = () => {
   });
   const [courses, setCourses] = useState([]);
   const [requests, setRequests] = useState([]);
-  const [enrollments, setEnrollments] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -66,7 +66,9 @@ const TeacherDashboard = () => {
       pricePerSession: '',
       totalSessions: 1,
       freeTrialDays: 3,
-      discountPercentage: 0
+      discountPercentage: 0,
+      hasTrial: true,
+      upfrontPayment: false
     },
     schedule: {
       availability: [],
@@ -93,7 +95,9 @@ const TeacherDashboard = () => {
       pricePerSession: '',
       totalSessions: 1,
       freeTrialDays: 3,
-      discountPercentage: 0
+      discountPercentage: 0,
+      hasTrial: true,
+      upfrontPayment: false
     },
     schedule: {
       availability: [],
@@ -124,6 +128,14 @@ const TeacherDashboard = () => {
     homework: ''
   });
   const [selectedCourseStudents, setSelectedCourseStudents] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [paymentEarnings, setPaymentEarnings] = useState({
+    totalEarnings: 0,
+    pendingPayments: 0,
+    completedPayments: 0,
+    thisMonth: 0,
+    lastMonth: 0
+  });
 
   const statsCards = [
     { name: 'Total Courses', value: stats.totalCourses, icon: BookOpen, color: 'text-blue-600' },
@@ -155,6 +167,7 @@ const TeacherDashboard = () => {
     fetchCourses();
     fetchRequests();
     fetchSessions();
+    fetchPayments();
   }, []);
 
   useEffect(() => {
@@ -208,7 +221,8 @@ const TeacherDashboard = () => {
     try {
       const response = await apiClient.get(`/teacher/courses/${courseId}/enrollments`);
       if (response.data.success) {
-        setEnrollments(response.data.enrollments);
+        // Handle enrollments data if needed
+        console.log('Enrollments fetched:', response.data.enrollments);
       }
     } catch (error) {
       console.error('Error fetching enrollments:', error);
@@ -223,6 +237,61 @@ const TeacherDashboard = () => {
       }
     } catch (error) {
       console.error('Error fetching sessions:', error);
+    }
+  };
+
+  const fetchPayments = async () => {
+    try {
+      const response = await apiClient.get('/payment/teacher-payments');
+      if (response.data.success) {
+        setPayments(response.data.payments || []);
+        
+        // Calculate earnings from payments
+        const completedPayments = response.data.payments.filter(p => p.paymentStatus === 'completed');
+        const pendingPayments = response.data.payments.filter(p => p.paymentStatus === 'pending');
+        
+        const totalEarnings = completedPayments.reduce((sum, p) => sum + p.amount, 0);
+        const thisMonth = completedPayments
+          .filter(p => new Date(p.paymentDate).getMonth() === new Date().getMonth())
+          .reduce((sum, p) => sum + p.amount, 0);
+        
+        setPaymentEarnings({
+          totalEarnings,
+          pendingPayments: pendingPayments.length,
+          completedPayments: completedPayments.length,
+          thisMonth,
+          lastMonth: 0 // Could be calculated if needed
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      // Set default values to prevent white screen
+      setPayments([]);
+      setPaymentEarnings({
+        totalEarnings: 0,
+        pendingPayments: 0,
+        completedPayments: 0,
+        thisMonth: 0,
+        lastMonth: 0
+      });
+    }
+  };
+
+  const updatePaymentStatus = async (paymentId, status, refundAmount = 0, refundReason = '') => {
+    try {
+      const response = await apiClient.put(`/payment/${paymentId}`, {
+        paymentStatus: status,
+        refundAmount,
+        refundReason
+      });
+      
+      if (response.data.success) {
+        fetchPayments();
+        alert('Payment status updated successfully!');
+      }
+    } catch (error) {
+      console.error('Error updating payment status:', error);
+      alert(error.response?.data?.message || 'Failed to update payment status');
     }
   };
 
@@ -261,8 +330,15 @@ const TeacherDashboard = () => {
     if (!course.pricing.totalSessions || course.pricing.totalSessions < 1) {
       newErrors['pricing.totalSessions'] = 'Total sessions must be at least 1';
     }
-    if (course.pricing.freeTrialDays < 0) {
-      newErrors['pricing.freeTrialDays'] = 'Free trial days cannot be negative';
+    // If no trial (upfront payment), force freeTrialDays to 0
+    if (course.pricing.upfrontPayment) {
+      course.pricing.freeTrialDays = 0;
+      course.pricing.hasTrial = false;
+    } else {
+      course.pricing.hasTrial = true;
+      if (course.pricing.freeTrialDays < 0) {
+        newErrors['pricing.freeTrialDays'] = 'Free trial days cannot be negative';
+      }
     }
     if (course.pricing.discountPercentage < 0 || course.pricing.discountPercentage > 100) {
       newErrors['pricing.discountPercentage'] = 'Discount must be between 0 and 100';
@@ -442,7 +518,7 @@ const TeacherDashboard = () => {
         ...prev,
         [parent]: {
           ...prev[parent],
-          [child]: type === 'number' ? parseFloat(value) || 0 : value
+          [child]: type === 'number' ? parseFloat(value) || 0 : (type === 'checkbox' ? checked : value)
         }
       }));
     } else {
@@ -462,7 +538,7 @@ const TeacherDashboard = () => {
         ...prev,
         [parent]: {
           ...prev[parent],
-          [child]: type === 'number' ? parseFloat(value) || 0 : value
+          [child]: type === 'number' ? parseFloat(value) || 0 : (type === 'checkbox' ? checked : value)
         }
       }));
     } else {
@@ -647,7 +723,9 @@ const TeacherDashboard = () => {
               { id: 'courses', name: 'My Courses', icon: BookOpen },
               { id: 'sessions', name: 'Schedule Sessions', icon: Video },
               { id: 'requests', name: 'Student Requests', icon: MessageSquare },
-              { id: 'enrollments', name: 'Enrollments', icon: UserCheck }
+              { id: 'enrollments', name: 'Enrollments', icon: UserCheck },
+              { id: 'payments', name: 'Payments', icon: DollarSign },
+              { id: 'chat', name: 'Messages', icon: MessageSquare }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -933,6 +1011,178 @@ const TeacherDashboard = () => {
           </div>
         )}
 
+        {activeTab === 'payments' && (
+          <div className="space-y-6">
+            {/* Earnings Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <DollarSign className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Earnings</p>
+                    <p className="text-2xl font-bold text-gray-900">${paymentEarnings.totalEarnings}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <CheckCircle className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Completed Payments</p>
+                    <p className="text-2xl font-bold text-gray-900">{paymentEarnings.completedPayments}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-yellow-500">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <Clock className="h-8 w-8 text-yellow-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Pending Payments</p>
+                    <p className="text-2xl font-bold text-gray-900">{paymentEarnings.pendingPayments}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <TrendingUp className="h-8 w-8 text-purple-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">This Month</p>
+                    <p className="text-2xl font-bold text-gray-900">${paymentEarnings.thisMonth}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Transactions */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Payment Transactions</h2>
+                <p className="text-sm text-gray-500">All payments received for your courses</p>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Course
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Student
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Amount
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Sessions
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Payment Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {payments.length > 0 ? (
+                      payments.map((payment) => (
+                        <tr key={payment._id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {payment.course?.title || 'Unknown Course'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {payment.student?.name || 'Unknown Student'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                            ${payment.amount}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {payment.course?.pricing?.totalSessions || 1}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(payment.paymentDate).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              payment.paymentStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                              payment.paymentStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              payment.paymentStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                              payment.paymentStatus === 'refunded' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {payment.paymentStatus}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex space-x-2">
+                              {payment.paymentStatus === 'pending' && (
+                                <button
+                                  onClick={() => updatePaymentStatus(payment._id, 'completed')}
+                                  className="text-green-600 hover:text-green-900"
+                                  title="Mark as completed"
+                                >
+                                  <CheckCircle className="h-4 w-4" />
+                                </button>
+                              )}
+                              {payment.paymentStatus === 'completed' && (
+                                <button
+                                  onClick={() => {
+                                    const refundAmount = prompt('Enter refund amount:', payment.amount);
+                                    const refundReason = prompt('Enter refund reason:', '');
+                                    if (refundAmount && refundReason) {
+                                      updatePaymentStatus(payment._id, 'refunded', parseFloat(refundAmount), refundReason);
+                                    }
+                                  }}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  title="Process refund"
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </button>
+                              )}
+                              {payment.paymentStatus === 'pending' && (
+                                <button
+                                  onClick={() => updatePaymentStatus(payment._id, 'failed')}
+                                  className="text-red-600 hover:text-red-900"
+                                  title="Mark as failed"
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                          <DollarSign className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                          <p>No payments received</p>
+                          <p className="text-sm">Payment transactions will appear here</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'sessions' && (
           <div className="space-y-6">
             {/* Sessions Management */}
@@ -1009,6 +1259,13 @@ const TeacherDashboard = () => {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Chat Tab */}
+        {activeTab === 'chat' && (
+          <div className="h-[calc(100vh-200px)]">
+            <Chat currentUser={user} />
           </div>
         )}
 

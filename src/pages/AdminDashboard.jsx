@@ -10,9 +10,16 @@ import {
   Trash2,
   Eye,
   UserCheck,
-  Calendar
+  Calendar,
+  MessageSquare,
+  Mail,
+  Phone,
+  CheckCircle,
+  Clock,
+  DollarSign
 } from 'lucide-react';
 import apiClient from '../utils/api.js';
+import Chat from '../components/Chat.jsx';
 
 const AdminDashboard = () => {
   const { user } = useAuth();
@@ -56,6 +63,27 @@ const AdminDashboard = () => {
     gradeLevels: [],
     bio: ''
   });
+  const [contacts, setContacts] = useState([]);
+  const [contactStats, setContactStats] = useState({
+    total: 0,
+    new: 0,
+    read: 0,
+    replied: 0,
+    closed: 0,
+    recent: 0,
+    weekly: 0
+  });
+  const [contactStatusFilter, setContactStatusFilter] = useState('');
+  const [contactSearchTerm, setContactSearchTerm] = useState('');
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [showContactDetails, setShowContactDetails] = useState(false);
+  const [paymentAnalytics, setPaymentAnalytics] = useState({
+    totalIncome: 0,
+    incomeByStudent: [],
+    incomeByTeacher: [],
+    incomeByCourse: [],
+    statusSummary: []
+  });
 
   // Debug logging
   console.log('Admin Dashboard - Current user:', user?.name, user?.role);
@@ -72,17 +100,6 @@ const AdminDashboard = () => {
     'College', 'Adult Education'
   ];
 
-  // Stats cards
-  const statsCards = [
-    { name: 'Total Users', value: stats.users?.total || 0, icon: Users, color: 'text-blue-600' },
-    { name: 'Students', value: stats.users?.students || 0, icon: BookOpen, color: 'text-green-600' },
-    { name: 'Teachers', value: stats.users?.teachers || 0, icon: UserPlus, color: 'text-purple-600' },
-    { name: 'Admins', value: stats.users?.admins || 0, icon: TrendingUp, color: 'text-orange-600' },
-    { name: 'Total Courses', value: stats.courses?.total || 0, icon: BookOpen, color: 'text-indigo-600' },
-    { name: 'Published Courses', value: stats.courses?.published || 0, icon: Eye, color: 'text-green-600' },
-    { name: 'Active Enrollments', value: stats.enrollments?.active || 0, icon: UserCheck, color: 'text-pink-600' },
-    { name: 'Upcoming Sessions', value: stats.sessions?.upcoming || 0, icon: Calendar, color: 'text-yellow-600' }
-  ];
 
   // API functions
   const fetchStats = async () => {
@@ -129,10 +146,94 @@ const AdminDashboard = () => {
     }
   }, []);
 
+  const fetchContacts = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: '10',
+        ...(contactStatusFilter && { status: contactStatusFilter }),
+        ...(contactSearchTerm && { search: contactSearchTerm })
+      });
+
+      const response = await apiClient.get(`/contact?${params}`);
+      if (response.data.success) {
+        setContacts(response.data.contacts);
+        setTotalPages(response.data.pagination.pages);
+      }
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+    }
+  }, [currentPage, contactStatusFilter, contactSearchTerm]);
+
+  const fetchContactStats = async () => {
+    try {
+      const response = await apiClient.get('/contact/stats/summary');
+      if (response.data.success) {
+        setContactStats(response.data.stats);
+      }
+    } catch (error) {
+      console.error('Error fetching contact stats:', error);
+    }
+  };
+
+  const updateContactStatus = async (contactId, status, adminNotes = '') => {
+    try {
+      const response = await apiClient.put(`/contact/${contactId}`, {
+        status,
+        adminNotes
+      });
+      if (response.data.success) {
+        fetchContacts();
+        fetchContactStats();
+      }
+    } catch (error) {
+      console.error('Error updating contact status:', error);
+    }
+  };
+
+  const deleteContact = async (contactId) => {
+    if (window.confirm('Are you sure you want to delete this contact submission?')) {
+      try {
+        const response = await apiClient.delete(`/contact/${contactId}`);
+        if (response.data.success) {
+          fetchContacts();
+          fetchContactStats();
+        }
+      } catch (error) {
+        console.error('Error deleting contact:', error);
+      }
+    }
+  };
+
+  const fetchPayments = async () => {
+    try {
+      const response = await apiClient.get('/payment/admin/all');
+      if (response.data.success) {
+        // Payments are not used in the UI, only analytics
+        console.log('Payments fetched:', response.data.payments?.length || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+    }
+  };
+
+  const fetchPaymentAnalytics = async () => {
+    try {
+      const response = await apiClient.get('/payment/admin/analytics');
+      if (response.data.success) {
+        setPaymentAnalytics(response.data.analytics);
+      }
+    } catch (error) {
+      console.error('Error fetching payment analytics:', error);
+    }
+  };
+
   useEffect(() => {
     fetchStats();
     fetchUsers();
     fetchCourses();
+    fetchContactStats();
+    fetchPaymentAnalytics();
   }, [fetchUsers, fetchCourses]);
 
   // Reset to page 1 when search parameters change
@@ -143,6 +244,15 @@ const AdminDashboard = () => {
       fetchUsers();
     }
   }, [userSearchTerm, userRoleFilter, currentPage, fetchUsers]);
+
+  // Fetch contacts when filters change
+  useEffect(() => {
+    if (activeTab === 'contacts') {
+      fetchContacts();
+    } else if (activeTab === 'payments') {
+      fetchPayments();
+    }
+  }, [activeTab, contactStatusFilter, contactSearchTerm, currentPage, fetchContacts]);
 
   // Fetch users when page changes
   useEffect(() => {
@@ -442,7 +552,10 @@ const AdminDashboard = () => {
           <nav className="flex space-x-8 border-b border-gray-200">
             {[
               { id: 'users', name: 'User Management', icon: Users },
-              { id: 'courses', name: 'Course Management', icon: BookOpen }
+              { id: 'courses', name: 'Course Management', icon: BookOpen },
+              { id: 'payments', name: 'Payment Analytics', icon: DollarSign },
+              { id: 'contacts', name: 'Contact Messages', icon: MessageSquare },
+              { id: 'chat', name: 'Messages', icon: MessageSquare }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -1123,6 +1236,418 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {/* Payment Analytics Tab */}
+        {activeTab === 'payments' && (
+          <div className="space-y-6">
+            {/* Payment Analytics Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <DollarSign className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Income</p>
+                    <p className="text-2xl font-bold text-gray-900">${paymentAnalytics.totalIncome}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <Users className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Active Students</p>
+                    <p className="text-2xl font-bold text-gray-900">{paymentAnalytics.incomeByStudent.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <BookOpen className="h-8 w-8 text-purple-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Active Teachers</p>
+                    <p className="text-2xl font-bold text-gray-900">{paymentAnalytics.incomeByTeacher.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <TrendingUp className="h-8 w-8 text-orange-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Active Courses</p>
+                    <p className="text-2xl font-bold text-gray-900">{paymentAnalytics.incomeByCourse.length}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Income by Student */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Income by Student</h2>
+                <p className="text-sm text-gray-500">Top paying students</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Paid</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payments</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {paymentAnalytics.incomeByStudent.slice(0, 10).map((item, index) => (
+                      <tr key={index}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {item.student.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                          ${item.total}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.count}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Income by Teacher */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Income by Teacher</h2>
+                <p className="text-sm text-gray-500">Teacher earnings</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Earned</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payments</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {paymentAnalytics.incomeByTeacher.slice(0, 10).map((item, index) => (
+                      <tr key={index}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {item.teacher.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                          ${item.total}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.count}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Income by Course */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Income by Course</h2>
+                <p className="text-sm text-gray-500">Course performance</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade Level</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Revenue</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payments</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {paymentAnalytics.incomeByCourse.slice(0, 10).map((item, index) => (
+                      <tr key={index}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {item.course.title}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.course.subject}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.course.gradeLevel}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                          ${item.total}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.count}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Payment Status Summary */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Payment Status Summary</h2>
+                <p className="text-sm text-gray-500">Payment status breakdown</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Count</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {paymentAnalytics.statusSummary.map((item, index) => (
+                      <tr key={index}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            item._id === 'completed' ? 'bg-green-100 text-green-800' :
+                            item._id === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            item._id === 'failed' ? 'bg-red-100 text-red-800' :
+                            item._id === 'refunded' ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {item._id}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                          {item.count}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                          ${item.total}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Contacts Tab */}
+        {activeTab === 'contacts' && (
+          <div className="space-y-6">
+            {/* Contact Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <MessageSquare className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Messages</p>
+                    <p className="text-2xl font-bold text-gray-900">{contactStats.total}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <Clock className="h-8 w-8 text-yellow-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">New Messages</p>
+                    <p className="text-2xl font-bold text-gray-900">{contactStats.new}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Replied</p>
+                    <p className="text-2xl font-bold text-gray-900">{contactStats.replied}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <Mail className="h-8 w-8 text-purple-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">This Week</p>
+                    <p className="text-2xl font-bold text-gray-900">{contactStats.weekly}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact Management */}
+            <div className="bg-white rounded-lg shadow">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900">Contact Messages</h2>
+                </div>
+                
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search messages..."
+                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 w-full"
+                        value={contactSearchTerm}
+                        onChange={(e) => setContactSearchTerm(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="sm:w-48">
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      value={contactStatusFilter}
+                      onChange={(e) => setContactStatusFilter(e.target.value)}
+                    >
+                      <option value="">All Status</option>
+                      <option value="new">New</option>
+                      <option value="read">Read</option>
+                      <option value="replied">Replied</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Contacts Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {contacts.length > 0 ? (
+                      contacts.map((contact) => (
+                        <tr key={contact._id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{contact.name}</div>
+                              <div className="text-sm text-gray-500">{contact.email}</div>
+                              {contact.phone && (
+                                <div className="text-sm text-gray-500">{contact.phone}</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-gray-900 max-w-xs truncate">
+                              {contact.message}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              contact.status === 'new' ? 'bg-yellow-100 text-yellow-800' :
+                              contact.status === 'read' ? 'bg-blue-100 text-blue-800' :
+                              contact.status === 'replied' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {contact.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(contact.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedContact(contact);
+                                  setShowContactDetails(true);
+                                }}
+                                className="text-blue-600 hover:text-blue-900"
+                                title="View Details"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => updateContactStatus(contact._id, 'read')}
+                                className="text-green-600 hover:text-green-900"
+                                title="Mark as Read"
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => deleteContact(contact._id)}
+                                className="text-red-600 hover:text-red-900"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
+                          <MessageSquare className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                          <p>No contact messages found</p>
+                          <p className="text-sm">Contact form submissions will appear here</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="px-6 py-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-700">
+                      Showing page {currentPage} of {totalPages}
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* View User Details Modal */}
         {showUserDetails && selectedUser && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -1213,6 +1738,116 @@ const AdminDashboard = () => {
                 <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
                   <button
                     onClick={() => setShowUserDetails(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chat Tab */}
+        {activeTab === 'chat' && (
+          <div className="h-[calc(100vh-200px)]">
+            <Chat currentUser={user} />
+          </div>
+        )}
+
+        {/* View Contact Details Modal */}
+        {showContactDetails && selectedContact && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-10 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+              <div className="mt-3">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Contact Message Details</h3>
+                  <button
+                    onClick={() => setShowContactDetails(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="space-y-6">
+                  {/* Contact Info */}
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-500">Name</label>
+                      <p className="mt-1 text-sm text-gray-900">{selectedContact.name}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-500">Email</label>
+                      <p className="mt-1 text-sm text-gray-900">{selectedContact.email}</p>
+                    </div>
+                    {selectedContact.phone && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500">Phone</label>
+                        <p className="mt-1 text-sm text-gray-900">{selectedContact.phone}</p>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-500">Status</label>
+                      <span className={`mt-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        selectedContact.status === 'new' ? 'bg-yellow-100 text-yellow-800' :
+                        selectedContact.status === 'read' ? 'bg-blue-100 text-blue-800' :
+                        selectedContact.status === 'replied' ? 'bg-green-100 text-green-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {selectedContact.status}
+                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-500">Date</label>
+                      <p className="mt-1 text-sm text-gray-900">{new Date(selectedContact.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    {selectedContact.repliedAt && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500">Replied At</label>
+                        <p className="mt-1 text-sm text-gray-900">{new Date(selectedContact.repliedAt).toLocaleDateString()}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-500 mb-2">Message</label>
+                    <div className="mt-1 p-4 bg-gray-50 rounded-md">
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedContact.message}</p>
+                    </div>
+                  </div>
+
+                  {/* Admin Notes */}
+                  {selectedContact.adminNotes && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-500 mb-2">Admin Notes</label>
+                      <div className="mt-1 p-4 bg-blue-50 rounded-md">
+                        <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedContact.adminNotes}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex justify-between items-center mt-6 pt-4 border-t">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => updateContactStatus(selectedContact._id, 'read')}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                      Mark as Read
+                    </button>
+                    <button
+                      onClick={() => updateContactStatus(selectedContact._id, 'replied')}
+                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                    >
+                      Mark as Replied
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowContactDetails(false)}
                     className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                   >
                     Close
