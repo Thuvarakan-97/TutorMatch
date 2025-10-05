@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { NotificationsProvider } from './contexts/NotificationsContext.jsx';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import About from './pages/About';
@@ -15,6 +16,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 function App() {
   return (
     <AuthProvider>
+      <NotificationsProvider>
       <Router>
         <Routes>
           <Route path="/" element={<Layout />}>
@@ -41,6 +43,7 @@ function App() {
           </Route>
         </Routes>
       </Router>
+      </NotificationsProvider>
     </AuthProvider>
   );
 }

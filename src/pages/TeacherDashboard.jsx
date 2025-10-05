@@ -136,6 +136,8 @@ const TeacherDashboard = () => {
     thisMonth: 0,
     lastMonth: 0
   });
+  const [reviews, setReviews] = useState([]);
+  const [reviewsSummary, setReviewsSummary] = useState({ average: 0, count: 0 });
 
   const statsCards = [
     { name: 'Total Courses', value: stats.totalCourses, icon: BookOpen, color: 'text-blue-600' },
@@ -168,6 +170,7 @@ const TeacherDashboard = () => {
     fetchRequests();
     fetchSessions();
     fetchPayments();
+    fetchMyReviews();
   }, []);
 
   useEffect(() => {
@@ -274,6 +277,20 @@ const TeacherDashboard = () => {
         thisMonth: 0,
         lastMonth: 0
       });
+    }
+  };
+
+  const fetchMyReviews = async (page = 1) => {
+    try {
+      const response = await apiClient.get(`/reviews/teacher/${user?.id || user?._id}?page=${page}&limit=10`);
+      if (response.data.success) {
+        setReviews(response.data.reviews || []);
+        setReviewsSummary(response.data.summary || { average: 0, count: 0 });
+      }
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+      setReviews([]);
+      setReviewsSummary({ average: 0, count: 0 });
     }
   };
 
@@ -725,6 +742,7 @@ const TeacherDashboard = () => {
               { id: 'requests', name: 'Student Requests', icon: MessageSquare },
               { id: 'enrollments', name: 'Enrollments', icon: UserCheck },
               { id: 'payments', name: 'Payments', icon: DollarSign },
+              { id: 'reviews', name: 'Reviews', icon: Star },
               { id: 'chat', name: 'Messages', icon: MessageSquare }
             ].map((tab) => (
               <button
@@ -1178,6 +1196,45 @@ const TeacherDashboard = () => {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'reviews' && (
+          <div className="space-y-6">
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Student Reviews</h2>
+                <div className="flex items-center space-x-2 text-sm text-gray-600">
+                  <Star className="h-5 w-5 text-yellow-400" />
+                  <span className="font-medium">{reviewsSummary.average.toFixed(1)}</span>
+                  <span>({reviewsSummary.count} reviews)</span>
+                </div>
+              </div>
+              <div className="space-y-4">
+                {reviews.length > 0 ? (
+                  reviews.map((rev) => (
+                    <div key={rev._id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{rev.student?.name || 'Student'}</p>
+                          <p className="text-xs text-gray-500">{new Date(rev.createdAt).toLocaleDateString()}</p>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Star className="h-4 w-4 text-yellow-400" />
+                          <span className="text-sm text-gray-700">{rev.rating}</span>
+                        </div>
+                      </div>
+                      {rev.comment && <p className="text-sm text-gray-700 mt-2">{rev.comment}</p>}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center text-gray-500 py-8">
+                    <Star className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                    <p>No reviews yet</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

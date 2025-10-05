@@ -5,6 +5,7 @@ import Enrollment from "../models/Enrollment.js";
 import Request from "../models/Request.js";
 import Session from "../models/Session.js";
 import { authenticateToken } from "../middleware/auth.js";
+import Notification from "../models/Notification.js";
 
 const router = Router();
 
@@ -321,6 +322,26 @@ router.put("/requests/:id", async (req, res, next) => {
             status: "trial"
           }
         }
+      });
+
+      // Notify student about acceptance
+      await Notification.create({
+        recipient: request.student._id,
+        type: "request_accepted",
+        title: "Request accepted",
+        message: `Your request for ${request.course.title} was accepted`,
+        link: `/student`,
+        meta: { courseId: request.course._id }
+      });
+    }
+    if (status === "rejected") {
+      await Notification.create({
+        recipient: request.student._id,
+        type: "request_rejected",
+        title: "Request rejected",
+        message: `Your request for ${request.course.title} was rejected`,
+        link: `/student`,
+        meta: { courseId: request.course._id }
       });
     }
 

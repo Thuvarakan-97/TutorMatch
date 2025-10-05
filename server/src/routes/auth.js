@@ -2,6 +2,7 @@ import { Router } from "express";
 import Joi from "joi";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import Notification from "../models/Notification.js";
 
 const router = Router();
 
@@ -90,7 +91,17 @@ router.post("/register", async (req, res, next) => {
 
     // Return user data without password hash
     const userResponse = await User.findById(user._id).select('-passwordHash');
-    
+
+    // Notify admins of new user registration (broadcast)
+    await Notification.create({
+      audienceRole: "admin",
+      type: "system",
+      title: "New user registered",
+      message: `${user.name} registered as ${user.role}`,
+      link: "/admin",
+      meta: { userId: user._id }
+    });
+
     res.status(201).json({ 
       success: true, 
       message: "User registered successfully",

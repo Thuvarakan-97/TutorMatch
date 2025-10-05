@@ -6,6 +6,7 @@ import Request from "../models/Request.js";
 import Session from "../models/Session.js";
 import Payment from "../models/Payment.js";
 import { authenticateToken } from "../middleware/auth.js";
+import Notification from "../models/Notification.js";
 
 const router = Router();
 
@@ -269,6 +270,16 @@ router.post("/courses/:id/request", async (req, res, next) => {
     const populatedRequest = await Request.findById(request._id)
       .populate('student', 'name email')
       .populate('course', 'title subject');
+
+    // Notify teacher about new request
+    await Notification.create({
+      recipient: course.teacher._id,
+      type: "request_created",
+      title: "New enrollment request",
+      message: `${req.user.name || req.user.email} requested to join ${course.title}`,
+      link: `/teacher?tab=requests`,
+      meta: { requestId: populatedRequest._id, courseId: course._id }
+    });
 
     res.status(201).json({ success: true, request: populatedRequest });
   } catch (error) {

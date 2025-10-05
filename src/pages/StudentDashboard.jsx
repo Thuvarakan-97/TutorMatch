@@ -60,6 +60,13 @@ const StudentDashboard = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [reviewData, setReviewData] = useState({ rating: 5, comment: '' });
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [teacherReviews, setTeacherReviews] = useState([]);
+  const [reviewsSummary, setReviewsSummary] = useState({ average: 0, count: 0 });
+  const [reviewsTeacher, setReviewsTeacher] = useState(null);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [selectedEnrollment, setSelectedEnrollment] = useState(null);
   const [paymentData, setPaymentData] = useState({
@@ -276,6 +283,49 @@ const StudentDashboard = () => {
       notes: ''
     });
     setShowPaymentModal(true);
+  };
+
+  const openReviewsModal = async (teacher, teacherName) => {
+    try {
+      setReviewsTeacher({ id: teacher, name: teacherName });
+      setShowReviewsModal(true);
+      setReviewsLoading(true);
+      const res = await apiClient.get(`/reviews/teacher/${teacher}?limit=10`);
+      if (res.data.success) {
+        setTeacherReviews(res.data.reviews || []);
+        setReviewsSummary(res.data.summary || { average: 0, count: 0 });
+      } else {
+        setTeacherReviews([]);
+        setReviewsSummary({ average: 0, count: 0 });
+      }
+    } catch (err) {
+      console.error('Error fetching reviews', err);
+      setTeacherReviews([]);
+      setReviewsSummary({ average: 0, count: 0 });
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  const submitReview = async (enrollment) => {
+    try {
+      setSubmittingReview(true);
+      const payload = {
+        teacherId: enrollment.teacher._id,
+        courseId: enrollment.course._id,
+        rating: Number(reviewData.rating),
+        comment: reviewData.comment
+      };
+      const res = await apiClient.post('/reviews', payload);
+      if (res.data.success) {
+        alert('Review submitted successfully');
+        setReviewData({ rating: 5, comment: '' });
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to submit review');
+    } finally {
+      setSubmittingReview(false);
+    }
   };
 
   const handleSearchChange = (e) => {
@@ -503,6 +553,12 @@ const StudentDashboard = () => {
                       ${course.pricing.pricePerSession}/session
                     </div>
                     <div className="flex space-x-2">
+                    <button
+                      onClick={() => openReviewsModal(course.teacher._id || course.teacher.id, course.teacher.name)}
+                      className="btn-secondary text-sm py-1 px-3"
+                    >
+                      View Reviews
+                    </button>
                       <button
                         onClick={() => openCourseModal(course)}
                         className="text-gray-600 hover:text-gray-900"
@@ -610,6 +666,42 @@ const StudentDashboard = () => {
                             <CreditCard className="h-4 w-4 mr-1" />
                             Pay Now
                           </button>
+                        )}
+                        <button
+                          onClick={() => openReviewsModal(enrollment.teacher._id || enrollment.teacher.id, enrollment.teacher.name)}
+                          className="btn-secondary text-sm py-1 px-3"
+                        >
+                          View Reviews
+                        </button>
+                        {/* Review form (students can review their teacher) */}
+                        {enrollment.status !== 'cancelled' && (
+                          <div className="flex items-center space-x-2">
+                            <select
+                              className="input-field text-xs w-20"
+                              value={reviewData.rating}
+                              onChange={(e) => setReviewData(prev => ({ ...prev, rating: e.target.value }))}
+                            >
+                              <option value={5}>5 ★</option>
+                              <option value={4}>4 ★</option>
+                              <option value={3}>3 ★</option>
+                              <option value={2}>2 ★</option>
+                              <option value={1}>1 ★</option>
+                            </select>
+                            <input
+                              type="text"
+                              className="input-field text-xs"
+                              placeholder="Write a short review"
+                              value={reviewData.comment}
+                              onChange={(e) => setReviewData(prev => ({ ...prev, comment: e.target.value }))}
+                            />
+                            <button
+                              disabled={submittingReview}
+                              onClick={() => submitReview(enrollment)}
+                              className="btn-secondary text-xs py-1 px-2"
+                            >
+                              {submittingReview ? 'Sending...' : 'Review'}
+                            </button>
+                          </div>
                         )}
                         <button
                           onClick={() => cancelEnrollment(enrollment._id)}
@@ -1061,6 +1153,71 @@ const StudentDashboard = () => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reviews Modal */}
+        {showReviewsModal && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+              <div className="mt-1">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Reviews for {reviewsTeacher?.name}</h3>
+                    <p className="text-sm text-gray-600">
+                      Average {reviewsSummary.average.toFixed(1)} / 5 • {reviewsSummary.count} review{reviewsSummary.count === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setShowReviewsModal(false); setTeacherReviews([]); }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {reviewsLoading ? (
+                    <div className="py-10 text-center text-gray-500">Loading reviews...</div>
+                  ) : teacherReviews.length > 0 ? (
+                    teacherReviews.map((r) => (
+                      <div key={r._id} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{r.student?.name || 'Student'}</p>
+                            <p className="text-xs text-gray-500">{new Date(r.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            {[1,2,3,4,5].map((i) => (
+                              <Star key={i} className={`h-4 w-4 ${i <= r.rating ? 'text-yellow-400' : 'text-gray-300'}`} />
+                            ))}
+                          </div>
+                        </div>
+                        {r.comment && (
+                          <p className="text-sm text-gray-700 mt-2">{r.comment}</p>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-10 text-center text-gray-500">
+                      <Star className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                      <p>No reviews yet for this teacher.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-4 pt-2 border-t">
+                  <button
+                    onClick={() => setShowReviewsModal(false)}
+                    className="btn-secondary"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>

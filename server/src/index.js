@@ -14,6 +14,8 @@ import studentRouter from "./routes/student.js";
 import contactRouter from "./routes/contact.js";
 import chatRouter from "./routes/chat.js";
 import paymentRouter from "./routes/payment.js";
+import notificationsRouter from "./routes/notifications.js";
+import reviewsRouter from "./routes/reviews.js";
 
 dotenv.config();
 
@@ -36,6 +38,8 @@ app.use("/api/student", studentRouter);
 app.use("/api/contact", contactRouter);
 app.use("/api/chat", chatRouter);
 app.use("/api/payment", paymentRouter);
+app.use("/api/notifications", notificationsRouter);
+app.use("/api/reviews", reviewsRouter);
 
 // 404 and Error handlers
 app.use(notFoundHandler);

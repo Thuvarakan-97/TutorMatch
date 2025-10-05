@@ -5,6 +5,7 @@ import Course from "../models/Course.js";
 import Enrollment from "../models/Enrollment.js";
 import Session from "../models/Session.js";
 import { authenticateToken, requireAdmin } from "../middleware/auth.js";
+import Notification from "../models/Notification.js";
 
 const router = Router();
 

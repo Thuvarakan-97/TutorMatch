@@ -1,12 +1,15 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { BookOpen, User, LogOut, Menu, X } from 'lucide-react';
+import { BookOpen, User, LogOut, Menu, X, Bell, Check } from 'lucide-react';
 import { useState } from 'react';
+import { useNotifications } from '../contexts/NotificationsContext.jsx';
 
 const Layout = () => {
   const { user, logout } = useAuth();
+  const { items, unreadCount, markRead, markAllRead, fetchNotifications } = useNotifications();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const navigation = [
     { name: 'Home', href: '/' },
@@ -51,6 +54,50 @@ const Layout = () => {
             <div className="flex items-center space-x-4">
               {user ? (
                 <div className="flex items-center space-x-4">
+                  {/* Notifications */}
+                  <div className="relative">
+                    <button
+                      onClick={() => { setNotifOpen(!notifOpen); if (!notifOpen) fetchNotifications(); }}
+                      className="relative p-2 rounded-full hover:bg-gray-100"
+                      aria-label="Notifications"
+                    >
+                      <Bell className="h-5 w-5 text-gray-600" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1 min-w-[18px] text-center">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </button>
+                    {/* Dropdown */}
+                    {notifOpen && (
+                    <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                      <div className="flex items-center justify-between px-3 py-2 border-b">
+                        <span className="text-sm font-medium">Notifications</span>
+                        <button onClick={markAllRead} className="text-xs text-blue-600 hover:underline flex items-center">
+                          <Check className="h-3 w-3 mr-1" /> Mark all read
+                        </button>
+                      </div>
+                      <div className="max-h-80 overflow-auto">
+                        {items.length === 0 ? (
+                          <div className="p-4 text-sm text-gray-500">No notifications</div>
+                        ) : (
+                          items.map(n => (
+                            <a
+                              key={n._id}
+                              href={n.link || '#'}
+                              onClick={() => { markRead(n._id); setNotifOpen(false); }}
+                              className={`block px-4 py-3 text-sm border-b hover:bg-gray-50 ${n.isRead ? 'text-gray-600' : 'bg-blue-50/50'}`}
+                            >
+                              <div className="font-medium text-gray-900">{n.title}</div>
+                              <div className="text-gray-600">{n.message}</div>
+                              <div className="text-xs text-gray-400 mt-1">{new Date(n.createdAt).toLocaleString()}</div>
+                            </a>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    )}
+                  </div>
                   <div className="flex items-center space-x-2">
                     <User className="h-5 w-5 text-gray-500" />
                     <span className="text-sm font-medium text-gray-700">

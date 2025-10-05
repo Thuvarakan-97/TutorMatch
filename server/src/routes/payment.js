@@ -5,6 +5,7 @@ import Payment from '../models/Payment.js';
 import Course from '../models/Course.js';
 import User from '../models/User.js';
 import { authenticateToken } from '../middleware/auth.js';
+import Notification from '../models/Notification.js';
 
 const router = Router();
 
@@ -81,6 +82,24 @@ router.post('/create', authenticateToken, async (req, res, next) => {
       { path: 'teacher', select: 'name email' },
       { path: 'course', select: 'title subject gradeLevel pricing' }
     ]);
+
+    // Notify teacher and student
+    await Notification.create({
+      recipient: course.teacher._id,
+      type: 'payment_status',
+      title: 'New payment initiated',
+      message: `${payment.student.name || 'A student'} initiated a payment for ${payment.course.title}`,
+      link: '/teacher?tab=payments',
+      meta: { paymentId: payment._id }
+    });
+    await Notification.create({
+      recipient: studentId,
+      type: 'payment_status',
+      title: 'Payment created',
+      message: `Your payment for ${payment.course.title} is pending`,
+      link: '/student',
+      meta: { paymentId: payment._id }
+    });
 
     res.status(201).json({
       success: true,
@@ -204,6 +223,26 @@ router.put('/:paymentId', authenticateToken, async (req, res, next) => {
       { path: 'teacher', select: 'name email' },
       { path: 'course', select: 'title subject gradeLevel' }
     ]);
+
+    // Notify both parties on status change
+    if (data.paymentStatus) {
+      await Notification.create({
+        recipient: updatedPayment.student._id,
+        type: 'payment_status',
+        title: `Payment ${data.paymentStatus}`,
+        message: `Payment for ${updatedPayment.course.title} is ${data.paymentStatus}`,
+        link: '/student',
+        meta: { paymentId: updatedPayment._id }
+      });
+      await Notification.create({
+        recipient: updatedPayment.teacher._id,
+        type: 'payment_status',
+        title: `Payment ${data.paymentStatus}`,
+        message: `Payment from ${updatedPayment.student.name} is ${data.paymentStatus}`,
+        link: '/teacher?tab=payments',
+        meta: { paymentId: updatedPayment._id }
+      });
+    }
 
     res.json({
       success: true,

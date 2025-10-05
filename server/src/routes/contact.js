@@ -2,6 +2,7 @@ import { Router } from "express";
 import Joi from "joi";
 import Contact from "../models/Contact.js";
 import { authenticateToken, requireAdmin } from "../middleware/auth.js";
+import Notification from "../models/Notification.js";
 
 const router = Router();
 
@@ -166,6 +167,17 @@ router.put("/:id", async (req, res, next) => {
         message: "Contact submission not found" 
       });
     }
+
+    // Notify all admins when a contact is replied or status changes
+    await Notification.create({
+      audienceRole: "admin",
+      recipient: req.user._id, // store actor for reference; querying can use audienceRole
+      type: "contact_updated",
+      title: `Contact ${data.status || 'updated'}`,
+      message: `Contact message from ${contact.name} marked as ${contact.status}`,
+      link: `/admin?tab=contacts`,
+      meta: { contactId: contact._id }
+    });
 
     res.json({ success: true, contact });
   } catch (err) {

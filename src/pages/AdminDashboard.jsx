@@ -37,6 +37,9 @@ const AdminDashboard = () => {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('users');
+  const [reviews, setReviews] = useState([]);
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const [reviewsTotalPages, setReviewsTotalPages] = useState(1);
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [courseDetails, setCourseDetails] = useState(null);
@@ -230,6 +233,19 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchReviews = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ page: reviewsPage.toString(), limit: '10' });
+      const response = await apiClient.get(`/reviews/admin/all?${params}`);
+      if (response.data.success) {
+        setReviews(response.data.reviews);
+        setReviewsTotalPages(response.data.pagination.pages);
+      }
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+    }
+  }, [reviewsPage]);
+
   useEffect(() => {
     fetchStats();
     fetchUsers();
@@ -253,8 +269,10 @@ const AdminDashboard = () => {
       fetchContacts();
     } else if (activeTab === 'payments') {
       fetchPayments();
+    } else if (activeTab === 'reviews') {
+      fetchReviews();
     }
-  }, [activeTab, contactStatusFilter, contactSearchTerm, currentPage, fetchContacts]);
+  }, [activeTab, contactStatusFilter, contactSearchTerm, currentPage, fetchContacts, fetchReviews]);
 
   // Fetch users when page changes
   useEffect(() => {
@@ -552,10 +570,11 @@ const AdminDashboard = () => {
         {/* Tabs */}
         <div className="mb-6">
           <nav className="flex space-x-8 border-b border-gray-200">
-            {[
+            {[ 
               { id: 'users', name: 'User Management', icon: Users },
               { id: 'courses', name: 'Course Management', icon: BookOpen },
               { id: 'payments', name: 'Payment Analytics', icon: DollarSign },
+              { id: 'reviews', name: 'Reviews', icon: TrendingUp },
               { id: 'contacts', name: 'Contact Messages', icon: MessageSquare },
               { id: 'chat', name: 'Messages', icon: MessageSquare }
             ].map((tab) => (
@@ -1442,6 +1461,69 @@ const AdminDashboard = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reviews Tab */}
+        {activeTab === 'reviews' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Teacher Reviews</h2>
+                <p className="text-sm text-gray-500">All student reviews across the platform</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comment</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {reviews.length > 0 ? (
+                      reviews.map((r) => (
+                        <tr key={r._id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.teacher?.name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.student?.name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.rating}</td>
+                          <td className="px-6 py-4 text-sm text-gray-700 max-w-sm truncate" title={r.comment}>{r.comment}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(r.createdAt).toLocaleDateString()}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="5" className="px-6 py-8 text-center text-gray-500">No reviews found</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {reviewsTotalPages > 1 && (
+                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                  <div className="text-sm text-gray-700">Page {reviewsPage} of {reviewsTotalPages}</div>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => setReviewsPage(Math.max(1, reviewsPage - 1))}
+                      disabled={reviewsPage === 1}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setReviewsPage(Math.min(reviewsTotalPages, reviewsPage + 1))}
+                      disabled={reviewsPage === reviewsTotalPages}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
