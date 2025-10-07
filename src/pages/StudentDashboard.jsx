@@ -26,7 +26,10 @@ import {
   Eye,
   Video,
   ExternalLink,
-  Copy
+  Copy,
+  Target,
+  List,
+  Paperclip
 } from 'lucide-react';
 import apiClient from '../utils/api.js';
 import Chat from '../components/Chat.jsx';
@@ -913,7 +916,7 @@ const StudentDashboard = () => {
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Course Details</h4>
                     <p className="text-sm text-gray-600 mb-3">{selectedCourse.description}</p>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                       <div>
                         <span className="font-medium">Subject:</span> {selectedCourse.subject}
                       </div>
@@ -927,6 +930,80 @@ const StudentDashboard = () => {
                         <span className="font-medium">Free Trial:</span> {selectedCourse.pricing.freeTrialDays} days
                       </div>
                     </div>
+
+                    {/* Course Content Section */}
+                    {selectedCourse.content && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-gray-900 mb-3">Course Content</h4>
+                        
+                        {/* Overview */}
+                        {selectedCourse.content.overview && (
+                          <div className="mb-4">
+                            <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                              <BookOpen className="h-4 w-4 mr-2" />
+                              Overview
+                            </h5>
+                            <p className="text-sm text-gray-600 pl-6">{selectedCourse.content.overview}</p>
+                          </div>
+                        )}
+
+                        {/* Objectives */}
+                        {selectedCourse.content.objectives && selectedCourse.content.objectives.length > 0 && (
+                          <div className="mb-4">
+                            <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                              <Target className="h-4 w-4 mr-2" />
+                              Learning Objectives
+                            </h5>
+                            <ul className="text-sm text-gray-600 pl-6 space-y-1">
+                              {selectedCourse.content.objectives.map((objective, index) => (
+                                <li key={index} className="flex items-start">
+                                  <CheckCircle className="h-3 w-3 text-green-500 mr-2 mt-1 flex-shrink-0" />
+                                  {objective}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Curriculum */}
+                        {selectedCourse.content.curriculum && selectedCourse.content.curriculum.length > 0 && (
+                          <div className="mb-4">
+                            <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                              <List className="h-4 w-4 mr-2" />
+                              Curriculum
+                            </h5>
+                            <ul className="text-sm text-gray-600 pl-6 space-y-1">
+                              {selectedCourse.content.curriculum.map((item, index) => (
+                                <li key={index} className="flex items-start">
+                                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-2 mt-0.5 flex-shrink-0">
+                                    {index + 1}
+                                  </span>
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Materials */}
+                        {selectedCourse.content.materials && selectedCourse.content.materials.length > 0 && (
+                          <div className="mb-4">
+                            <h5 className="font-medium text-gray-800 mb-2 flex items-center">
+                              <BookOpen className="h-4 w-4 mr-2" />
+                              Materials & Resources
+                            </h5>
+                            <ul className="text-sm text-gray-600 pl-6 space-y-1">
+                              {selectedCourse.content.materials.map((material, index) => (
+                                <li key={index} className="flex items-start">
+                                  <Paperclip className="h-3 w-3 text-gray-400 mr-2 mt-1 flex-shrink-0" />
+                                  {material}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   <div>
